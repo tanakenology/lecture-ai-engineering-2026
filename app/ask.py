@@ -21,14 +21,21 @@ from app.config import MODEL, api_error_message, get_api_key
 DEFAULT_QUESTION = "AIE2026の講座の宿題にある「3レベル」とは何ですか？"
 
 
-def ask(question: str) -> str:
-    client = genai.Client(api_key=get_api_key())
-    response = client.models.generate_content(model=MODEL, contents=question)
+class ChatSession:
+    """会話履歴を保持してLLMに質問するセッション。"""
 
-    # TODO(第1回 演習): response.usage_metadata から
-    #   入力トークン数と出力トークン数を表示してみよう（Copilotに頼んでよい）
+    def __init__(self, model: str = MODEL) -> None:
+        self.model = model
+        self.client = genai.Client(api_key=get_api_key())
+        self.chat = self.client.chats.create(model=self.model)
 
-    return response.text
+    def ask(self, question: str) -> str:
+        response = self.chat.send_message(question)
+
+        print(f"入力トークン数: {response.usage_metadata.prompt_token_count}")
+        print(f"出力トークン数: {response.usage_metadata.candidates_token_count}")
+
+        return response.text or ""
 
 
 def main() -> None:
@@ -37,12 +44,26 @@ def main() -> None:
     args = parser.parse_args()
 
     print(f"[model] {MODEL}")
-    print(f"[質問] {args.question}\n")
-    try:
-        print(ask(args.question))
-    except errors.APIError as e:
-        print(api_error_message(e.code, e.message))
-        raise SystemExit(1)
+    session = ChatSession()
+    question = args.question
+
+    while True:
+        print(f"\n[質問] {question}\n")
+        try:
+            print(session.ask(question))
+        except errors.APIError as e:
+            print(api_error_message(e.code, e.message))
+            raise SystemExit(1)
+
+        try:
+            next_question = input("\n[続けて質問（空Enter / quit / exit で終了）]: ").strip()
+        except (EOFError, KeyboardInterrupt):
+            print()
+            break
+
+        if not next_question or next_question.lower() in {"quit", "exit"}:
+            break
+        question = next_question
 
 
 if __name__ == "__main__":
